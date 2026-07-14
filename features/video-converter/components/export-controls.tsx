@@ -3,6 +3,7 @@
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import type { ExportSizeMode, ExportState } from '../types'
+import type { FfmpegPreloadStatus } from '../hooks/use-ffmpeg-preload'
 import { getExportEstimate, DEFAULT_FPS } from '../utils/frame-generator'
 
 interface ExportControlsProps {
@@ -15,6 +16,8 @@ interface ExportControlsProps {
   disabled: boolean
   videoRef: React.RefObject<HTMLVideoElement | null>
   cols: number
+  encoderPreloadStatus?: FfmpegPreloadStatus
+  isCancelling?: boolean
 }
 
 const SIZE_MODES: { value: ExportSizeMode; label: string }[] = [
@@ -55,6 +58,19 @@ function TerminalButton({
   )
 }
 
+function getEncoderPreloadLabel(status: FfmpegPreloadStatus): string | null {
+  switch (status) {
+    case 'loading':
+      return 'Preparing encoder...'
+    case 'ready':
+      return 'Encoder ready'
+    case 'error':
+      return 'Encoder will load on first export'
+    default:
+      return null
+  }
+}
+
 function getStatusLabel(exportState: ExportState): string {
   switch (exportState.status) {
     case 'loading-ffmpeg':
@@ -70,6 +86,8 @@ function getStatusLabel(exportState: ExportState): string {
       return exportState.downloadFormat === 'webm'
         ? '✓ DOWNLOADED (WEBM)'
         : '✓ DOWNLOADED (MP4)'
+    case 'cancelled':
+      return 'EXPORT CANCELLED'
     case 'error':
       return 'EXPORT FAILED'
     default:
@@ -87,6 +105,8 @@ export function ExportControls({
   disabled,
   videoRef,
   cols,
+  encoderPreloadStatus = 'idle',
+  isCancelling = false,
 }: ExportControlsProps) {
   const isExporting =
     exportState.status === 'loading-ffmpeg' ||
@@ -94,10 +114,22 @@ export function ExportControls({
     exportState.status === 'encoding'
 
   const estimate = getExportEstimate(videoRef.current, cols, sizeMode, DEFAULT_FPS)
+  const encoderLabel = getEncoderPreloadLabel(encoderPreloadStatus)
 
   return (
     <div className="flex flex-col gap-3 pt-4 border-t border-terminal-border">
       <span className="text-xs text-muted-foreground tracking-widest uppercase">Export</span>
+
+      {encoderLabel && !isExporting && (
+        <p
+          className={cn(
+            'font-mono text-xs',
+            encoderPreloadStatus === 'ready' ? 'text-phosphor-dim' : 'text-muted-foreground',
+          )}
+        >
+          {encoderLabel}
+        </p>
+      )}
 
       <div className="flex flex-col gap-1.5">
         <span className="text-xs text-muted-foreground tracking-widest uppercase">Size</span>
@@ -125,8 +157,12 @@ export function ExportControls({
           [ EXPORT MP4 ]
         </TerminalButton>
         {isExporting && (
-          <TerminalButton onClick={onCancel} className="border-destructive/50 text-destructive">
-            [ CANCEL ]
+          <TerminalButton
+            onClick={onCancel}
+            disabled={isCancelling}
+            className="border-destructive/50 text-destructive"
+          >
+            {isCancelling ? '[ CANCELLING... ]' : '[ CANCEL ]'}
           </TerminalButton>
         )}
         {exportState.status === 'error' && (
@@ -140,7 +176,12 @@ export function ExportControls({
         <div className="flex flex-col gap-1.5">
           <Progress value={exportState.progress} aria-label="Export progress" />
           <p className="font-mono text-xs text-phosphor-dim">{getStatusLabel(exportState)}</p>
-          {exportState.infoMessage && (
+          {exportState.status === 'loading-ffmpeg' && (
+            <p className="font-mono text-xs text-muted-foreground">
+              First export downloads ~31 MB encoder — may take 1–2 min
+            </p>
+          )}
+          {exportState.infoMessage && exportState.status !== 'loading-ffmpeg' && (
             <p className="font-mono text-xs text-amber-400">{exportState.infoMessage}</p>
           )}
         </div>
@@ -153,6 +194,10 @@ export function ExportControls({
             <p className="font-mono text-xs text-amber-400">{exportState.infoMessage}</p>
           )}
         </div>
+      )}
+
+      {exportState.status === 'cancelled' && (
+        <p className="font-mono text-xs text-muted-foreground">{getStatusLabel(exportState)}</p>
       )}
 
       {exportState.status === 'error' && (

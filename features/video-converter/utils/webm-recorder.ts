@@ -6,13 +6,21 @@ function getWebmMimeType(): string {
   return candidates.find(type => MediaRecorder.isTypeSupported(type)) ?? 'video/webm'
 }
 
+export interface WebmEncodeOptions {
+  onProgress: (progress: number) => void
+  shouldAbort?: () => boolean
+}
+
 export async function encodeFramesToWebm(
   frames: Blob[],
   width: number,
   height: number,
   fps: number,
-  onProgress: (progress: number) => void,
+  options: WebmEncodeOptions | ((progress: number) => void),
 ): Promise<Blob> {
+  const { onProgress, shouldAbort } =
+    typeof options === 'function' ? { onProgress: options, shouldAbort: undefined } : options
+
   if (frames.length === 0) {
     throw new Error('No frames to encode')
   }
@@ -44,33 +52,40 @@ export async function encodeFramesToWebm(
   })
 
   recorder.start()
-  const frameDelayMs = 1000 / fps
 
-  for (let i = 0; i < frames.length; i++) {
-    const bitmap = await createImageBitmap(frames[i])
-    ctx.drawImage(bitmap, 0, 0, width, height)
-    bitmap.close()
+  try {
+    for (let i = 0; i < frames.length; i++) {
+      if (shouldAbort?.()) {
+        recorder.stop()
+        throw new Error('Export cancelled')
+      }
 
-    if ('requestFrame' in track && typeof track.requestFrame === 'function') {
-      track.requestFrame()
+      const bitmap = await createImageBitmap(frames[i])
+      ctx.drawImage(bitmap, 0, 0, width, height)
+      bitmap.close()
+
+      if ('requestFrame' in track && typeof track.requestFrame === 'function') {
+        track.requestFrame()
+      }
+
+      const progress =
+        FRAME_PROGRESS_START + ((i + 1) / frames.length) * FRAME_PROGRESS_RANGE
+      onProgress(progress)
     }
 
-    const progress =
-      FRAME_PROGRESS_START + ((i + 1) / frames.length) * FRAME_PROGRESS_RANGE
-    onProgress(progress)
+    recorder.stop()
+    const blob = await recorded
 
-    if (i < frames.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, frameDelayMs))
+    if (blob.size === 0) {
+      throw new Error('WebM encoding produced an empty file')
     }
+
+    onProgress(100)
+    return blob
+  } catch (error) {
+    if (recorder.state !== 'inactive') {
+      recorder.stop()
+    }
+    throw error
   }
-
-  recorder.stop()
-  const blob = await recorded
-
-  if (blob.size === 0) {
-    throw new Error('WebM encoding produced an empty file')
-  }
-
-  onProgress(100)
-  return blob
 }

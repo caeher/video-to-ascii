@@ -26,6 +26,20 @@ const INITIAL_STATE: ExportState = {
   progress: 0,
 }
 
+const EXPORT_CANCELLED = 'Export cancelled'
+
+function isExportCancelled(error: unknown): boolean {
+  if (error instanceof Error && error.message === EXPORT_CANCELLED) return true
+  if (error instanceof DOMException && error.name === 'AbortError') return true
+  return false
+}
+
+function getMp4FallbackMessage(error: unknown): string {
+  const detail =
+    error instanceof Error ? error.message : 'Unknown encoder error'
+  return `MP4 encoder unavailable (${detail}). Downloading WebM instead.`
+}
+
 function mapErrorMessage(message: string): string {
   if (message.includes('timed out')) {
     return `${message} Try a shorter clip or reload the page.`
@@ -45,11 +59,16 @@ export function useAsciiExporter({
   pause,
 }: UseAsciiExporterOptions) {
   const [exportState, setExportState] = useState<ExportState>(INITIAL_STATE)
+  const [isCancelling, setIsCancelling] = useState(false)
   const abortRef = useRef(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
   const lastOptionsRef = useRef<ExportOptions | null>(null)
 
   const cancelExport = useCallback(() => {
     abortRef.current = true
+    setIsCancelling(true)
+    abortControllerRef.current?.abort()
+    resetFFmpegCache()
   }, [])
 
   const exportVideo = useCallback(
@@ -73,6 +92,10 @@ export function useAsciiExporter({
 
       lastOptionsRef.current = options
       abortRef.current = false
+      setIsCancelling(false)
+      abortControllerRef.current = new AbortController()
+      const { signal } = abortControllerRef.current
+
       onExportStart()
       pause()
 
@@ -101,7 +124,7 @@ export function useAsciiExporter({
           },
         )
 
-        if (abortRef.current) throw new Error('Export cancelled')
+        if (abortRef.current) throw new Error(EXPORT_CANCELLED)
 
         setExportState({
           status: 'encoding',
@@ -118,49 +141,67 @@ export function useAsciiExporter({
           setExportState({
             status: 'loading-ffmpeg',
             progress: 70,
-            phase: 'encode',
+            phase: 'load-encoder',
             totalFrames,
+            infoMessage: 'First export downloads ~31 MB encoder — may take 1–2 min',
           })
 
-          outputBlob = await encodeFramesToMp4(frames, fps, progress => {
-            setExportState({
-              status: 'encoding',
-              progress,
-              phase: 'encode',
-              totalFrames,
-              downloadFormat: 'mp4',
-            })
-          })
+          outputBlob = await encodeFramesToMp4(
+            frames,
+            fps,
+            progress => {
+              setExportState({
+                status: 'encoding',
+                progress,
+                phase: 'encode',
+                totalFrames,
+                downloadFormat: 'mp4',
+              })
+            },
+            { signal },
+          )
         } catch (mp4Error) {
+          if (isExportCancelled(mp4Error) || abortRef.current) {
+            throw new Error(EXPORT_CANCELLED)
+          }
+
           console.warn('MP4 export failed, falling back to WebM:', mp4Error)
           resetFFmpegCache()
 
-          if (abortRef.current) throw new Error('Export cancelled')
+          if (abortRef.current) throw new Error(EXPORT_CANCELLED)
+
+          const fallbackMessage = getMp4FallbackMessage(mp4Error)
 
           setExportState({
             status: 'encoding',
             progress: 70,
             phase: 'encode',
             totalFrames,
-            infoMessage: 'MP4 encoder unavailable. Downloading WebM instead.',
+            infoMessage: fallbackMessage,
           })
 
-          outputBlob = await encodeFramesToWebm(frames, width, height, fps, progress => {
-            setExportState({
-              status: 'encoding',
-              progress,
-              phase: 'encode',
-              totalFrames,
-              downloadFormat: 'webm',
-              infoMessage: 'MP4 encoder unavailable. Downloading WebM instead.',
-            })
+          outputBlob = await encodeFramesToWebm(frames, width, height, fps, {
+            onProgress: progress => {
+              setExportState({
+                status: 'encoding',
+                progress,
+                phase: 'encode',
+                totalFrames,
+                downloadFormat: 'webm',
+                infoMessage: fallbackMessage,
+              })
+            },
+            shouldAbort: () => abortRef.current,
           })
 
           downloadFormat = 'webm'
-          infoMessage = 'MP4 encoder unavailable. Downloaded WebM instead.'
+          infoMessage = fallbackMessage.replace(
+            'Downloading WebM instead.',
+            'Downloaded WebM instead.',
+          )
         }
 
-        if (abortRef.current) throw new Error('Export cancelled')
+        if (abortRef.current) throw new Error(EXPORT_CANCELLED)
 
         const filename = buildExportFilename(
           sourceFileName || 'video',
@@ -177,19 +218,22 @@ export function useAsciiExporter({
         })
         setTimeout(() => setExportState(INITIAL_STATE), 4000)
       } catch (error) {
-        console.error('Video export error:', error)
-        const message =
-          error instanceof Error ? error.message : 'Export failed unexpectedly.'
-        if (message !== 'Export cancelled') {
+        if (isExportCancelled(error)) {
+          setExportState({ status: 'cancelled', progress: 0 })
+          setTimeout(() => setExportState(INITIAL_STATE), 2000)
+        } else {
+          console.error('Video export error:', error)
+          const message =
+            error instanceof Error ? error.message : 'Export failed unexpectedly.'
           setExportState({
             status: 'error',
             progress: 0,
             errorMessage: mapErrorMessage(message),
           })
-        } else {
-          setExportState(INITIAL_STATE)
         }
       } finally {
+        setIsCancelling(false)
+        abortControllerRef.current = null
         onExportEnd()
       }
     },
@@ -204,5 +248,5 @@ export function useAsciiExporter({
     }
   }, [exportVideo])
 
-  return { exportState, exportVideo, cancelExport, retryExport }
+  return { exportState, exportVideo, cancelExport, retryExport, isCancelling }
 }

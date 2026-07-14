@@ -36,11 +36,12 @@ export type ExportStatus =
   | 'encoding'
   | 'done'
   | 'error'
+  | 'cancelled'
 
 export interface ExportState {
   status: ExportStatus
   progress: number
-  phase?: 'frames' | 'encode'
+  phase?: 'frames' | 'encode' | 'load-encoder'
   frameIndex?: number
   totalFrames?: number
   downloadFormat?: 'mp4' | 'webm'

@@ -3,6 +3,7 @@
 import { useCallback, useState } from 'react'
 import { useAsciiConverter } from '../hooks/use-ascii-converter'
 import { useAsciiExporter } from '../hooks/use-ascii-exporter'
+import { useFfmpegPreload } from '../hooks/use-ffmpeg-preload'
 import type { ExportSizeMode } from '../types'
 import { AsciiViewer } from './ascii-viewer'
 import { ConverterControls } from './converter-controls'
@@ -29,7 +30,10 @@ export function VideoConverterApp() {
   const handleExportStart = useCallback(() => setIsExporting(true), [setIsExporting])
   const handleExportEnd = useCallback(() => setIsExporting(false), [setIsExporting])
 
-  const { exportState, exportVideo, cancelExport, retryExport } = useAsciiExporter({
+  const videoReady = state.status === 'playing' || state.status === 'paused'
+  const encoderPreloadStatus = useFfmpegPreload(videoReady)
+
+  const { exportState, exportVideo, cancelExport, retryExport, isCancelling } = useAsciiExporter({
     videoRef,
     config,
     sourceFileName,
@@ -152,6 +156,8 @@ export function VideoConverterApp() {
               disabled={state.status !== 'playing' && state.status !== 'paused'}
               videoRef={videoRef}
               cols={config.cols}
+              encoderPreloadStatus={encoderPreloadStatus}
+              isCancelling={isCancelling}
             />
           )}
 
