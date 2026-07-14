@@ -11,6 +11,7 @@ interface ExportControlsProps {
   onSizeModeChange: (mode: ExportSizeMode) => void
   onExport: () => void
   onCancel: () => void
+  onRetry: () => void
   disabled: boolean
   videoRef: React.RefObject<HTMLVideoElement | null>
   cols: number
@@ -57,13 +58,18 @@ function TerminalButton({
 function getStatusLabel(exportState: ExportState): string {
   switch (exportState.status) {
     case 'loading-ffmpeg':
-      return 'LOADING FFMPEG...'
+      return 'LOADING ENCODER...'
     case 'rendering':
+      if (exportState.frameIndex && exportState.totalFrames) {
+        return `RENDERING frame ${exportState.frameIndex}/${exportState.totalFrames} · ${Math.round(exportState.progress)}%`
+      }
       return `RENDERING ${Math.round(exportState.progress)}%`
     case 'encoding':
       return `ENCODING ${Math.round(exportState.progress)}%`
     case 'done':
-      return '✓ DOWNLOADED'
+      return exportState.downloadFormat === 'webm'
+        ? '✓ DOWNLOADED (WEBM)'
+        : '✓ DOWNLOADED (MP4)'
     case 'error':
       return 'EXPORT FAILED'
     default:
@@ -77,6 +83,7 @@ export function ExportControls({
   onSizeModeChange,
   onExport,
   onCancel,
+  onRetry,
   disabled,
   videoRef,
   cols,
@@ -122,17 +129,30 @@ export function ExportControls({
             [ CANCEL ]
           </TerminalButton>
         )}
+        {exportState.status === 'error' && (
+          <TerminalButton onClick={onRetry} active>
+            [ RETRY ]
+          </TerminalButton>
+        )}
       </div>
 
       {isExporting && (
         <div className="flex flex-col gap-1.5">
           <Progress value={exportState.progress} aria-label="Export progress" />
           <p className="font-mono text-xs text-phosphor-dim">{getStatusLabel(exportState)}</p>
+          {exportState.infoMessage && (
+            <p className="font-mono text-xs text-amber-400">{exportState.infoMessage}</p>
+          )}
         </div>
       )}
 
       {exportState.status === 'done' && (
-        <p className="font-mono text-xs text-phosphor">{getStatusLabel(exportState)}</p>
+        <div className="flex flex-col gap-1">
+          <p className="font-mono text-xs text-phosphor">{getStatusLabel(exportState)}</p>
+          {exportState.infoMessage && (
+            <p className="font-mono text-xs text-amber-400">{exportState.infoMessage}</p>
+          )}
+        </div>
       )}
 
       {exportState.status === 'error' && (

@@ -10,6 +10,16 @@ const COLOR_MAP: Record<AsciiColorMode, { fill: string; glow?: string }> = {
 
 const MIN_CELL_PX = 6
 
+export function resolveFontFamily(): string {
+  if (typeof document !== 'undefined' && document.fonts.check('12px "Space Mono"')) {
+    return '"Space Mono", monospace'
+  }
+  if (typeof console !== 'undefined') {
+    console.warn('[ascii-renderer] Space Mono not loaded, using monospace fallback')
+  }
+  return 'monospace'
+}
+
 export interface RenderAsciiOptions {
   width: number
   height: number

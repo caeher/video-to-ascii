@@ -29,7 +29,7 @@ export function VideoConverterApp() {
   const handleExportStart = useCallback(() => setIsExporting(true), [setIsExporting])
   const handleExportEnd = useCallback(() => setIsExporting(false), [setIsExporting])
 
-  const { exportState, exportVideo, cancelExport } = useAsciiExporter({
+  const { exportState, exportVideo, cancelExport, retryExport } = useAsciiExporter({
     videoRef,
     config,
     sourceFileName,
@@ -148,6 +148,7 @@ export function VideoConverterApp() {
               onSizeModeChange={setSizeMode}
               onExport={handleExport}
               onCancel={cancelExport}
+              onRetry={retryExport}
               disabled={state.status !== 'playing' && state.status !== 'paused'}
               videoRef={videoRef}
               cols={config.cols}

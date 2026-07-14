@@ -41,5 +41,9 @@ export interface ExportState {
   status: ExportStatus
   progress: number
   phase?: 'frames' | 'encode'
+  frameIndex?: number
+  totalFrames?: number
+  downloadFormat?: 'mp4' | 'webm'
+  infoMessage?: string
   errorMessage?: string
 }
