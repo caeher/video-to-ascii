@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AsciiConverterConfig, ConverterState } from '../types'
 import { pixelsToAscii } from '../utils/ascii-mapper'
+import { getAsciiGridSize } from '../utils/grid-dimensions'
 
 const DEFAULT_CONFIG: AsciiConverterConfig = {
   cols: 120,
@@ -15,13 +16,16 @@ const DEFAULT_CONFIG: AsciiConverterConfig = {
 interface UseAsciiConverterReturn {
   state: ConverterState
   asciiLines: string[]
-  videoRef: React.RefObject<HTMLVideoElement>
+  videoRef: React.RefObject<HTMLVideoElement | null>
+  canvasRef: React.RefObject<HTMLCanvasElement | null>
+  sourceFileName: string
   config: AsciiConverterConfig
   setConfig: React.Dispatch<React.SetStateAction<AsciiConverterConfig>>
   loadFile: (file: File) => void
   play: () => void
   pause: () => void
   reset: () => void
+  setIsExporting: (value: boolean) => void
 }
 
 export function useAsciiConverter(): UseAsciiConverterReturn {
@@ -31,14 +35,20 @@ export function useAsciiConverter(): UseAsciiConverterReturn {
   const fpsTimestampRef = useRef<number>(0)
   const frameCountRef = useRef<number>(0)
   const fpsCounterRef = useRef<number>(0)
+  const isExportingRef = useRef(false)
 
   const [config, setConfig] = useState<AsciiConverterConfig>(DEFAULT_CONFIG)
   const [asciiLines, setAsciiLines] = useState<string[]>([])
+  const [sourceFileName, setSourceFileName] = useState('')
   const [state, setState] = useState<ConverterState>({
     status: 'idle',
     fps: 0,
     frameCount: 0,
   })
+
+  const setIsExporting = useCallback((value: boolean) => {
+    isExportingRef.current = value
+  }, [])
 
   // Create an offscreen canvas once
   useEffect(() => {
@@ -48,12 +58,9 @@ export function useAsciiConverter(): UseAsciiConverterReturn {
   const processFrame = useCallback(() => {
     const video = videoRef.current
     const canvas = canvasRef.current
-    if (!video || !canvas || video.paused || video.ended) return
+    if (!video || !canvas || video.paused || video.ended || isExportingRef.current) return
 
-    const aspect = video.videoHeight / video.videoWidth
-    const cols = config.cols
-    // Compensate for character aspect ratio (chars are ~2x taller than wide)
-    const rows = Math.floor(cols * aspect * 0.45)
+    const { cols, rows } = getAsciiGridSize(video.videoWidth, video.videoHeight, config.cols)
 
     canvas.width = cols
     canvas.height = rows
@@ -112,6 +119,7 @@ export function useAsciiConverter(): UseAsciiConverterReturn {
     setState({ status: 'loading', fps: 0, frameCount: 0 })
     frameCountRef.current = 0
     fpsCounterRef.current = 0
+    setSourceFileName(file.name)
 
     const url = URL.createObjectURL(file)
     video.src = url
@@ -150,6 +158,7 @@ export function useAsciiConverter(): UseAsciiConverterReturn {
     setAsciiLines([])
     frameCountRef.current = 0
     fpsCounterRef.current = 0
+    setSourceFileName('')
     setState({ status: 'idle', fps: 0, frameCount: 0 })
   }, [stopLoop])
 
@@ -192,5 +201,18 @@ export function useAsciiConverter(): UseAsciiConverterReturn {
     }
   }, [stopLoop])
 
-  return { state, asciiLines, videoRef, config, setConfig, loadFile, play, pause, reset }
+  return {
+    state,
+    asciiLines,
+    videoRef,
+    canvasRef,
+    sourceFileName,
+    config,
+    setConfig,
+    loadFile,
+    play,
+    pause,
+    reset,
+    setIsExporting,
+  }
 }

@@ -11,6 +11,7 @@ interface ConverterControlsProps {
   onPlay: () => void
   onPause: () => void
   onReset: () => void
+  disabled?: boolean
 }
 
 const COLOR_MODES: { value: AsciiColorMode; label: string }[] = [
@@ -68,6 +69,7 @@ export function ConverterControls({
   onPlay,
   onPause,
   onReset,
+  disabled = false,
 }: ConverterControlsProps) {
   const isPlaying = state.status === 'playing'
   const isActive = state.status === 'playing' || state.status === 'paused'
@@ -80,12 +82,12 @@ export function ConverterControls({
         <div className="flex gap-2 flex-wrap">
           <TerminalButton
             onClick={isPlaying ? onPause : onPlay}
-            disabled={!isActive}
+            disabled={!isActive || disabled}
             active={isPlaying}
           >
             {isPlaying ? '[ PAUSE ]' : '[ PLAY  ]'}
           </TerminalButton>
-          <TerminalButton onClick={onReset} disabled={state.status === 'idle'}>
+          <TerminalButton onClick={onReset} disabled={state.status === 'idle' || disabled}>
             [ RESET ]
           </TerminalButton>
         </div>
@@ -100,6 +102,7 @@ export function ConverterControls({
           value={[config.cols]}
           onValueChange={([v]) => onConfigChange({ cols: v })}
           aria-label="Character columns"
+          disabled={disabled}
         />
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>40</span>
@@ -116,6 +119,7 @@ export function ConverterControls({
           value={[config.contrast]}
           onValueChange={([v]) => onConfigChange({ contrast: v })}
           aria-label="Contrast"
+          disabled={disabled}
         />
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>0.5</span>
@@ -132,6 +136,7 @@ export function ConverterControls({
           value={[config.brightness]}
           onValueChange={([v]) => onConfigChange({ brightness: v })}
           aria-label="Brightness"
+          disabled={disabled}
         />
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>-80</span>
@@ -147,6 +152,7 @@ export function ConverterControls({
               key={value}
               onClick={() => onConfigChange({ colorMode: value })}
               active={config.colorMode === value}
+              disabled={disabled}
             >
               {label}
             </TerminalButton>
@@ -159,6 +165,7 @@ export function ConverterControls({
         <TerminalButton
           onClick={() => onConfigChange({ invert: !config.invert })}
           active={config.invert}
+          disabled={disabled}
         >
           {config.invert ? '[ ON  ]' : '[ OFF ]'}
         </TerminalButton>

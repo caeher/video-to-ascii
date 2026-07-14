@@ -1,23 +1,59 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useAsciiConverter } from '../hooks/use-ascii-converter'
+import { useAsciiExporter } from '../hooks/use-ascii-exporter'
+import type { ExportSizeMode } from '../types'
 import { AsciiViewer } from './ascii-viewer'
 import { ConverterControls } from './converter-controls'
+import { ExportControls } from './export-controls'
 import { VideoDropzone } from './video-dropzone'
 
 export function VideoConverterApp() {
-  const { state, asciiLines, videoRef, config, setConfig, loadFile, play, pause, reset } =
-    useAsciiConverter()
+  const {
+    state,
+    asciiLines,
+    videoRef,
+    sourceFileName,
+    config,
+    setConfig,
+    loadFile,
+    play,
+    pause,
+    reset,
+    setIsExporting,
+  } = useAsciiConverter()
+
+  const [sizeMode, setSizeMode] = useState<ExportSizeMode>('original')
+
+  const handleExportStart = useCallback(() => setIsExporting(true), [setIsExporting])
+  const handleExportEnd = useCallback(() => setIsExporting(false), [setIsExporting])
+
+  const { exportState, exportVideo, cancelExport } = useAsciiExporter({
+    videoRef,
+    config,
+    sourceFileName,
+    onExportStart: handleExportStart,
+    onExportEnd: handleExportEnd,
+    pause,
+  })
 
   const handleConfigChange = useCallback(
-    (patch: Parameters<typeof setConfig>[0] extends ((prev: infer P) => infer P) ? never : Partial<typeof config>) => {
+    (patch: Partial<typeof config>) => {
       setConfig(prev => ({ ...prev, ...patch }))
     },
     [setConfig],
   )
 
+  const handleExport = useCallback(() => {
+    exportVideo({ sizeMode, fps: 30 })
+  }, [exportVideo, sizeMode])
+
   const hasVideo = state.status !== 'idle'
+  const isExporting =
+    exportState.status === 'loading-ffmpeg' ||
+    exportState.status === 'rendering' ||
+    exportState.status === 'encoding'
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -41,7 +77,7 @@ export function VideoConverterApp() {
             className="font-mono text-xs text-phosphor-dim animate-pulse"
             aria-live="polite"
           >
-            {state.status === 'playing' ? '● REC' : '○ ---'}
+            {isExporting ? '● EXPORT' : state.status === 'playing' ? '● REC' : '○ ---'}
           </span>
         )}
       </header>
@@ -102,7 +138,21 @@ export function VideoConverterApp() {
             onPlay={play}
             onPause={pause}
             onReset={reset}
+            disabled={isExporting}
           />
+
+          {hasVideo && state.status !== 'loading' && state.status !== 'error' && (
+            <ExportControls
+              exportState={exportState}
+              sizeMode={sizeMode}
+              onSizeModeChange={setSizeMode}
+              onExport={handleExport}
+              onCancel={cancelExport}
+              disabled={state.status !== 'playing' && state.status !== 'paused'}
+              videoRef={videoRef}
+              cols={config.cols}
+            />
+          )}
 
           {/* Load new video CTA */}
           {hasVideo && (

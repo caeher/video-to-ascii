@@ -21,3 +21,25 @@ export interface ConverterState {
   frameCount: number
   errorMessage?: string
 }
+
+export type ExportSizeMode = 'original' | 'grid'
+
+export interface ExportOptions {
+  sizeMode: ExportSizeMode
+  fps?: number
+}
+
+export type ExportStatus =
+  | 'idle'
+  | 'loading-ffmpeg'
+  | 'rendering'
+  | 'encoding'
+  | 'done'
+  | 'error'
+
+export interface ExportState {
+  status: ExportStatus
+  progress: number
+  phase?: 'frames' | 'encode'
+  errorMessage?: string
+}

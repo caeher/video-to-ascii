@@ -28,7 +28,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="bg-background">
-      <body className="antialiased font-mono">{children}</body>
+      <body className={`${_inter.variable} ${_spaceMono.variable} antialiased font-mono`}>{children}</body>
       {process.env.NODE_ENV === 'production' && <Analytics />}
     </html>
   )
